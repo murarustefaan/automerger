@@ -53,8 +53,33 @@ func fetchPRsByLabel(repo string, labels []string) ([]pullRequest, error) {
 	return prs, nil
 }
 
+func fetchPRs(repo string, labels []string) ([]pullRequest, error) {
+	params := []string{"pr", "list", "--repo", repo, "--limit", "100"}
+	for _, label := range labels {
+		params = append(params, "--label", label)
+	}
+	params = append(params, "--json", "id,number,title,labels")
+
+	output, err := executeCommand(params...)
+	if err != nil {
+		return nil, err
+	}
+
+	var prs []pullRequest
+	if err = json.Unmarshal([]byte(output), &prs); err != nil {
+		return nil, err
+	}
+
+	return prs, nil
+}
+
 func (pr pullRequest) Label(repo string, label string) error {
 	_, err := executeCommand("pr", "edit", strconv.Itoa(pr.Number), "--repo", repo, "--add-label", label)
+	return err
+}
+
+func (pr pullRequest) Delabel(repo string) error {
+	_, err := executeCommand("pr", "edit", strconv.Itoa(pr.Number), "--repo", repo, "--remove-label", "automerge")
 	return err
 }
 
@@ -107,12 +132,21 @@ func main() {
 		}
 		fmt.Println()
 
+		//for _, pr := range automergePRs {
+		//	fmt.Printf("Removing label from PR #%d: %s\n", pr.Number, pr.Title)
+		//	err := pr.Delabel(repo)
+		//	if err != nil {
+		//		log.Fatalf("Failed to remove label from PR #%d: %s = %v", pr.Number, pr.Title, err)
+		//	}
+		//}
+
 		toLabel := maxAutomergePRs - len(automergePRs)
 		if toLabel > 0 {
 			toLabel = min(toLabel, len(pendingPRs))
 			for i := 0; i < toLabel; i++ {
 				log.Printf("Labeling PR #%s: %s with automerge.\n", strconv.Itoa(pendingPRs[i].Number), pendingPRs[i].Title)
 				err := pendingPRs[i].Label(repo, "automerge")
+
 				if err != nil {
 					log.Fatalf("Failed to label PR #%s: %s = %v", pendingPRs[i].Number, pendingPRs[i].Title, err)
 				}
@@ -121,6 +155,6 @@ func main() {
 		}
 
 		fmt.Println("Waiting for merges.")
-		time.Sleep(30 * time.Second) // Adjust the sleep time as needed
+		time.Sleep(5 * time.Minute) // Adjust the sleep time as needed
 	}
 }
